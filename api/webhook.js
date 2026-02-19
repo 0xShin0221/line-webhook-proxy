@@ -4,9 +4,6 @@ const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Disable Vercel's body parser to get raw body for signature validation
-module.exports.config = { api: { bodyParser: false } };
-
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -59,7 +56,7 @@ async function askClaude(userMessage) {
   return "Sorry, I could not process your message.";
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -87,4 +84,7 @@ module.exports = async function handler(req, res) {
   }
 
   return res.status(200).json({ ok: true });
-};
+}
+
+module.exports = handler;
+module.exports.config = { api: { bodyParser: false } };
