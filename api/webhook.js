@@ -4,21 +4,15 @@ const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
-
-function validateSignature(rawBody, signature) {
+function validateSignature(body, signature) {
   const hash = crypto
     .createHmac("SHA256", CHANNEL_SECRET)
-    .update(rawBody)
+    .update(Buffer.from(body))
     .digest("base64");
-  return hash === signature;
+  return crypto.timingSafeEqual(
+    Buffer.from(hash),
+    Buffer.from(signature)
+  );
 }
 
 async function replyToLine(replyToken, text) {
@@ -56,19 +50,28 @@ async function askClaude(userMessage) {
   return "Sorry, I could not process your message.";
 }
 
-async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const rawBody = await readRawBody(req);
+  // Vercel provides raw body as string via x-vercel-raw-body or we can use req.body
+  const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
   const signature = req.headers["x-line-signature"];
 
-  if (!signature || !validateSignature(rawBody, signature)) {
-    return res.status(401).json({ error: "Invalid signature" });
+  if (!signature) {
+    return res.status(401).json({ error: "No signature" });
   }
 
-  const body = JSON.parse(rawBody.toString());
+  try {
+    if (!validateSignature(rawBody, signature)) {
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+  } catch (e) {
+    return res.status(401).json({ error: "Signature validation error" });
+  }
+
+  const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   const events = body.events || [];
 
   for (const event of events) {
@@ -84,7 +87,4 @@ async function handler(req, res) {
   }
 
   return res.status(200).json({ ok: true });
-}
-
-module.exports = handler;
-module.exports.config = { api: { bodyParser: false } };
+};
